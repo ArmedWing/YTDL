@@ -66,6 +66,7 @@ class home(View):
             desktop_path = os.path.expanduser("~") + '/Desktop/'
             output_path = os.path.join(desktop_path, combined_filename)
 
+            # Merging the video and audio streams and deleting the now unnecessary video and audio streams.
             cmd = (
                 f'ffmpeg -i "{video_stream_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{output_path}"'
             )
