@@ -1,92 +1,104 @@
 import os
-import shlex
-import subprocess
+import yt_dlp as youtube_dl
 from django.views import View
-from pytube import YouTube
 from django.shortcuts import render, redirect
+from django.http import HttpResponse, HttpResponseNotFound
 
-class home(View):
-    def __init__(self, url=None):
-        self.url = url
-
+class HomeView(View):
     def get(self, request):
         return render(request, 'index.html')
 
     def post(self, request):
-        # for fetching the video
-        if request.POST.get('fetch-vid'):
-            self.url = request.POST.get('given_url')
-            video = YouTube(self.url)
+        url = request.POST.get('given_url')
+        download_option = request.POST.get('download_option')
 
-            video_stream = video.streams.filter(res="2160p").first()
-            video_1080p = video.streams.filter(res="1080p").first()
+        if not url:
+            return redirect('home')
 
-            audio = video.streams.filter(only_audio=True).first()
-
-            vidAuthor, vidTitle, vidThumbnail = video.author, video.title, video.thumbnail_url
-            quality, stream = [], []
-
-            stream.append(video_stream)
-            stream.append(video_1080p)
-            stream.append(audio)
-            print(stream)
-
-            context = {
-                'vidTitle': vidTitle,
-                'vidThumbnail': vidThumbnail,
-                'vidAuthor': vidAuthor,
-                'quality': quality,
-                'stream': stream,
-                'url': self.url,
-                       }
-
-            return render(request, 'index.html', context)
-
-        # for downloading the video
-        elif request.POST.get('download-vid'):
-            self.url = request.POST.get('given_url')
-            video = YouTube(self.url)
-            selected_resolution = request.POST.get('download-vid')
-
-            if selected_resolution == '1080p':
-                video_stream = video.streams.filter(res="1080p").first()
-            elif selected_resolution == '2160p':
-                video_stream = video.streams.filter(res="2160p").first()
-
-            audio = video.streams.filter(only_audio=True).first()
-
-            downloads_path = os.path.join(os.path.expanduser("~"), 'Downloads')
-            audio_path = os.path.join(downloads_path, 'audio.mp4')
-            video_stream_path = os.path.join(downloads_path, 'video_stream.mp4')
-
-            audio.download(filename=audio_path, output_path=downloads_path)
-            video_stream.download(filename=video_stream_path, output_path=downloads_path)
-
-            combined_filename = f'{video.author} - {video.title} {selected_resolution}.mp4'
-            desktop_path = os.path.expanduser("~") + '/Desktop/'
-            output_path = os.path.join(desktop_path, combined_filename)
-
-            # Merging the video and audio streams and deleting the now unnecessary video and audio streams.
-            cmd = (
-                f'ffmpeg -i "{video_stream_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{output_path}"'
-            )
-
+        if 'fetch-vid' in request.POST:
+            # Fetch video info
+            ydl_opts = {
+                'quiet': True,
+                'skip_download': True,
+                'noplaylist': True,
+            }
             try:
-                subprocess.check_output(shlex.split(cmd), stderr=subprocess.STDOUT)
-                os.remove(video_stream_path)
-                os.remove(audio_path)
-            except subprocess.CalledProcessError as e:
-                print("FFmpeg error:", e.output.decode())
+                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    vidTitle = info.get('title')
+                    vidThumbnail = info.get('thumbnail')
+                    vidAuthor = info.get('uploader')
+                    formats = info.get('formats', [])
+                    quality_options = ['1080p', '2160p']
+                    streams = {f['format_note']: f for f in formats if f.get('format_note') in quality_options}
 
-            return redirect('home')
+                context = {
+                    'vidTitle': vidTitle,
+                    'vidThumbnail': vidThumbnail,
+                    'vidAuthor': vidAuthor,
+                    'quality': list(streams.keys()),
+                    'streams': streams,
+                    'url': url,
+                }
+                return render(request, 'index.html', context)
+            except Exception as e:
+                print(f"Error fetching video info: {e}")
+                context = {
+                    'error': 'An error occurred while fetching video info. Please check the URL and try again.',
+                }
+                return render(request, 'index.html', context)
 
+        elif download_option:
+            # Ensure downloads directory exists
+            downloads_dir = 'downloads'
+            if not os.path.exists(downloads_dir):
+                os.makedirs(downloads_dir)
 
-        elif request.POST.get('download-audio'):
-            self.url = request.POST.get('given_url')
-            video = YouTube(self.url)
-            audio = video.streams.filter(only_audio=True).first()
-            username = os.getenv("USERNAME")
-            audio.download(output_path=f'C:/Users/{username}/Desktop')
+            ydl_opts = {}
+            if download_option == 'audio':
+                # Download audio only
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': os.path.join(downloads_dir, '%(title)s.%(ext)s'),
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                    }],
+                }
+            else:
+                # Download video with selected resolution
+                ydl_opts = {
+                    'format': 'bestvideo+bestaudio/best',
+                    'outtmpl': 'downloads/%(title)s.%(ext)s',
+                    'merge_output_format': 'mp4',
+                }
 
-            return redirect('home')
-        return render(request, 'index.html')
+            # Use yt-dlp to download the video/audio
+            try:
+                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+
+                # Extract filename based on download_option
+                info = ydl.extract_info(url, download=False)
+                filename = f"{info['title']}.mp4" if download_option != 'audio' else f"{info['title']}.mp3"
+                filepath = os.path.join(downloads_dir, filename)
+
+                if os.path.exists(filepath):
+                    context = {
+                        'message': f"Download successful! File saved as {filename} in the 'downloads' folder.",
+                        'vidTitle': info.get('title'),
+                        'vidThumbnail': info.get('thumbnail'),
+                        'vidAuthor': info.get('uploader'),
+                        'url': url,
+                    }
+                    return render(request, 'index.html', context)
+                else:
+                    return HttpResponseNotFound('File not found')
+            except Exception as e:
+                print(f"Error during download: {e}")
+                context = {
+                    'error': 'An error occurred during download. Please try again later.',
+                }
+                return render(request, 'index.html', context)
+
+        return redirect('home')

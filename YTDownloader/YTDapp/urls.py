@@ -1,7 +1,7 @@
 from django.urls import path
-
+from .views import HomeView
 from YTDownloader.YTDapp import views
 
 urlpatterns = (
-    path('',views.home.as_view(),name="home"),
+    path('', HomeView.as_view(),name="home"),
 )
