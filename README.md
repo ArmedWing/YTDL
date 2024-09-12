@@ -18,3 +18,7 @@ Python 3.6 or higher
 Django 4.x
 
 yt-dlp (a fork of youtube-dl with additional features and fixes)
+
+![2024-09-12 17_56_51-Window](https://github.com/user-attachments/assets/ed98a33f-b5d5-48cf-abf6-b3a398fa5c1d)
+![2024-09-12 17_56_30-Window](https://github.com/user-attachments/assets/21900195-2220-4d9c-b100-0747138d16b3)
+![2024-09-12 17_56_22-Window](https://github.com/user-attachments/assets/61ef55e4-4a7d-4e4f-b632-2caf280c59d6)
